@@ -1,58 +1,36 @@
-workflows:
-  ios-build-altstore:
-    name: Build iOS for AltStore
-    instance_type: mac_mini_m2
-    environment:
-      node: 20
-      xcode: latest
-      cocoapods: default
-    scripts:
-      - name: Full iOS Build
+      - name: Build Unsigned IPA
         script: |
-          # 1. Instalar dependências e Build Web (Vite)
-          npm install
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npm run build
+          # 1. Verifica se a pasta existe
+          if [ ! -d "ios/App" ]; then
+            echo "ERRO: A pasta ios/App não foi encontrada!"
+            exit 1
+          fi
 
-          # 2. CRIAR CONFIGURAÇÃO MANUAL (Obrigatório para funcionar no CI)
-          cat <<EOF > capacitor.config.json
-          {
-            "appId": "com.salles.atelie",
-            "appName": "Salles Atelie",
-            "webDir": "dist"
-          }
-          EOF
-
-          # 3. GERAR PASTA IOS DO ZERO
-          rm -rf ios
-          npx cap add ios
-          npx cap sync ios
-
-          # 4. BUILD NATIVO XCODE (Sem Assinatura)
           cd ios/App
-          pod install
           
+          # 2. Build via Xcode usando SPM (sem pod install)
+          # Adicionamos -resolvePackageDependencies para baixar as bibliotecas Swift
           xcodebuild build \
-            -workspace App.xcworkspace \
             -scheme App \
+            -destination 'generic/platform=iOS' \
             -configuration Release \
-            -sdk iphoneos \
             -derivedDataPath ./build_output \
+            -resolvePackageDependencies \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # 5. CRIAR IPA PARA ALTSTORE
+          # 3. Cria o IPA para AltStore
           mkdir -p Payload
+          # O caminho do .app no novo Xcode fica em Build/Products/Release-iphoneos/
           APP_PATH=$(find ./build_output -name "App.app" | head -n 1)
+          
           if [ -z "$APP_PATH" ]; then
-            echo "ERRO: O arquivo .app não foi gerado!"
+            echo "ERRO: Arquivo .app não encontrado após o build!"
             exit 1
           fi
           
           cp -R "$APP_PATH" Payload/
           zip -r SallesAtelie.ipa Payload
           mv SallesAtelie.ipa ../../
-    artifacts:
-      - "*.ipa"
