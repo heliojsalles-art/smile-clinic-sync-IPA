@@ -10,29 +10,48 @@ workflows:
       - name: Install dependencies and build web
         script: |
           npm install
+          # Instalando o Capacitor de forma global e local para garantir
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npm install @capacitor/assets --save-dev
           npm run build
-      - name: Capacitor Sync
+      - name: Initialize and Sync Capacitor iOS
         script: |
-          [ ! -f "capacitor.config.json" ] && npx cap init "Salles Atelie" "com.salles.atelie" --web-dir dist
+          # 1. Força a inicialização do capacitor se o config não existir
+          if [ ! -f "capacitor.config.json" ]; then
+            npx cap init "Salles Atelie" "com.salles.atelie" --web-dir dist
+          fi
+          
+          # 2. Adiciona a plataforma iOS (forçadamente)
+          # Se a pasta já existir, ele apenas ignora
           npx cap add ios || true
-          npx capacitor-assets generate --ios
+          
+          # 3. Copia os arquivos da web para dentro do iOS e cria os arquivos nativos (Podfile, xcworkspace)
+          npx cap copy ios
           npx cap sync ios
+          
+          # 4. Gera os assets
+          npx capacitor-assets generate --ios || true
       - name: Build Unsigned IPA
         script: |
           cd ios/App
+          
+          # Instala as dependências do iOS (CocoaPods)
           pod install
+          
+          # Executa o build forçando a saída para uma pasta local
           xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
           
+          # Cria o pacote para AltStore
           mkdir -p Payload
-          find build/Build/Products/Release-iphoneos -name "App.app" -exec cp -R {} Payload/ \;
+          # Procura o .app dentro da pasta build que definimos acima
+          find build -name "App.app" -exec cp -R {} Payload/ \;
           zip -r SallesAtelie.ipa Payload
           mv SallesAtelie.ipa ../../
     artifacts:
