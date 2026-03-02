@@ -7,38 +7,31 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Full Build Process
+      - name: Full iOS Build
         script: |
-          # 1. Instalação limpa
+          # 1. Instalar dependências e Build Web (Vite)
           npm install
           npm install @capacitor/core @capacitor/cli @capacitor/ios
-          
-          # 2. Gera a pasta dist (Vite)
           npm run build
-          
-          # 3. Força a criação do arquivo de config se não existir
-          if [ ! -f "capacitor.config.json" ]; then
-            cat <<EOF > capacitor.config.json
-            {
-              "appId": "com.salles.atelie",
-              "appName": "Salles Atelie",
-              "webDir": "dist",
-              "bundledWebRuntime": false
-            }
-          EOF
-          fi
 
-          # 4. CRIAÇÃO FORÇADA DA PASTA IOS
-          # Remove se houver lixo e recria do zero absoluto
+          # 2. CRIAR CONFIGURAÇÃO MANUAL (Obrigatório para funcionar no CI)
+          cat <<EOF > capacitor.config.json
+          {
+            "appId": "com.salles.atelie",
+            "appName": "Salles Atelie",
+            "webDir": "dist"
+          }
+          EOF
+
+          # 3. GERAR PASTA IOS DO ZERO
           rm -rf ios
           npx cap add ios
           npx cap sync ios
-          
-          # 5. ENTRA NA PASTA E BUILDA
+
+          # 4. BUILD NATIVO XCODE (Sem Assinatura)
           cd ios/App
           pod install
           
-          # Build via Xcode ignorando assinaturas
           xcodebuild build \
             -workspace App.xcworkspace \
             -scheme App \
@@ -50,11 +43,11 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # 6. EMPACOTAMENTO
+          # 5. CRIAR IPA PARA ALTSTORE
           mkdir -p Payload
           APP_PATH=$(find ./build_output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "ERRO: O arquivo .app não foi gerado pelo Xcode!"
+            echo "ERRO: O arquivo .app não foi gerado!"
             exit 1
           fi
           
