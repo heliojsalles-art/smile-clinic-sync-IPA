@@ -3,39 +3,52 @@ workflows:
     name: Build iOS for AltStore
     instance_type: mac_mini_m2
     environment:
-      node: latest
+      node: 20 # Versão estável para Vite/React
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Install dependencies and build web
+      - name: Install Dependencies and Build Web
         script: |
+          # Instala as dependências da web
           npm install
+          # Adiciona o Capacitor que estava faltando no seu package.json
           npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npm install @capacitor/assets --save-dev
+          # Gera a pasta 'dist' confirmada no seu package.json (vite build)
           npm run build
-      - name: Capacitor Sync
+      - name: Initialize Capacitor iOS
         script: |
-          [ ! -f "capacitor.config.json" ] && npx cap init "Salles Atelie" "com.salles.atelie" --web-dir dist
-          npx cap add ios || true
-          npx capacitor-assets generate --ios
+          # Remove lixo de tentativas anteriores
+          rm -rf ios
+          # Cria o arquivo de configuração se não existir
+          if [ ! -f "capacitor.config.json" ]; then
+            npx cap init "Salles Atelie" "com.salles.atelie" --web-dir dist
+          fi
+          # Adiciona e sincroniza a plataforma iOS
+          npx cap add ios
           npx cap sync ios
-      - name: Build Unsigned IPA
+      - name: Build Unsigned IPA (AltStore)
         script: |
           cd ios/App
+          # Instala os componentes nativos do iOS
           pod install
-          # Build para dispositivo físico mas sem assinar (CODE_SIGNING_ALLOWED=NO)
-          xcodebuild -workspace App.xcworkspace \
+          
+          # Build via Xcode sem assinatura
+          xcodebuild build \
+            -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            CODE_SIGN_ING_ALLOWED=NO \
+            -derivedDataPath ./build_output \
+            CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
-          
-          # Organiza os arquivos para criar um .ipa fake que a AltStore aceita
-          mkdir -p payload/Payload
-          cp -R build/Release-iphoneos/App.app payload/Payload/
-          cd payload && zip -r ../SallesAtelie.ipa Payload
+
+          # Empacotamento para IPA
+          mkdir -p Payload
+          APP_PATH=$(find ./build_output -name "App.app" | head -n 1)
+          cp -R "$APP_PATH" Payload/
+          zip -r SallesAtelie.ipa Payload
+          mv SallesAtelie.ipa ../../
     artifacts:
-      - ios/App/*.ipa
+      - "*.ipa"
