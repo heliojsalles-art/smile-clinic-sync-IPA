@@ -1,17 +1,28 @@
+workflows:
+  ios-build-altstore:
+    name: Build iOS for AltStore
+    instance_type: mac_mini_m2
+    environment:
+      node: latest
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install dependencies and build web
+        script: |
+          npm install
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+          npm install @capacitor/assets --save-dev
+          npm run build
       - name: Capacitor Sync
         script: |
-          # Garante que o projeto iOS existe e contém os arquivos nativos
           [ ! -f "capacitor.config.json" ] && npx cap init "Salles Atelie" "com.salles.atelie" --web-dir dist
           npx cap add ios || true
           npx capacitor-assets generate --ios
-          npx cap sync ios # Este comando cria o .xcworkspace e o Podfile
+          npx cap sync ios
       - name: Build Unsigned IPA
         script: |
-          # Entra na pasta correta onde o Podfile foi gerado
           cd ios/App
           pod install
-          
-          # Build corrigido (Removido o erro de digitação em CODE_SIGNING_ALLOWED)
           xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
@@ -20,12 +31,9 @@
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
           
-          # Caminho padrão de saída do xcodebuild é em DerivedData ou pasta local build/
-          # Vamos forçar a criação do IPA fake para a AltStore
           mkdir -p Payload
-          # O xcodebuild por padrão joga o .app dentro de build/Build/Products/Release-iphoneos/
-          find . -name "App.app" -exec cp -R {} Payload/ \;
+          find build/Build/Products/Release-iphoneos -name "App.app" -exec cp -R {} Payload/ \;
           zip -r SallesAtelie.ipa Payload
-          mv SallesAtelie.ipa ../../ # Move para a raiz para o Codemagic achar
+          mv SallesAtelie.ipa ../../
     artifacts:
       - "*.ipa"
