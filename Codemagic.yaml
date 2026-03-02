@@ -3,36 +3,42 @@ workflows:
     name: Build iOS for AltStore
     instance_type: mac_mini_m2
     environment:
-      node: 20 # Versão estável para Vite/React
+      node: 20
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Install Dependencies and Build Web
+      - name: Full Build Process
         script: |
-          # Instala as dependências da web
+          # 1. Instalação limpa
           npm install
-          # Adiciona o Capacitor que estava faltando no seu package.json
           npm install @capacitor/core @capacitor/cli @capacitor/ios
-          # Gera a pasta 'dist' confirmada no seu package.json (vite build)
+          
+          # 2. Gera a pasta dist (Vite)
           npm run build
-      - name: Initialize Capacitor iOS
-        script: |
-          # Remove lixo de tentativas anteriores
-          rm -rf ios
-          # Cria o arquivo de configuração se não existir
+          
+          # 3. Força a criação do arquivo de config se não existir
           if [ ! -f "capacitor.config.json" ]; then
-            npx cap init "Salles Atelie" "com.salles.atelie" --web-dir dist
+            cat <<EOF > capacitor.config.json
+            {
+              "appId": "com.salles.atelie",
+              "appName": "Salles Atelie",
+              "webDir": "dist",
+              "bundledWebRuntime": false
+            }
+          EOF
           fi
-          # Adiciona e sincroniza a plataforma iOS
+
+          # 4. CRIAÇÃO FORÇADA DA PASTA IOS
+          # Remove se houver lixo e recria do zero absoluto
+          rm -rf ios
           npx cap add ios
           npx cap sync ios
-      - name: Build Unsigned IPA (AltStore)
-        script: |
+          
+          # 5. ENTRA NA PASTA E BUILDA
           cd ios/App
-          # Instala os componentes nativos do iOS
           pod install
           
-          # Build via Xcode sem assinatura
+          # Build via Xcode ignorando assinaturas
           xcodebuild build \
             -workspace App.xcworkspace \
             -scheme App \
@@ -44,9 +50,14 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Empacotamento para IPA
+          # 6. EMPACOTAMENTO
           mkdir -p Payload
           APP_PATH=$(find ./build_output -name "App.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERRO: O arquivo .app não foi gerado pelo Xcode!"
+            exit 1
+          fi
+          
           cp -R "$APP_PATH" Payload/
           zip -r SallesAtelie.ipa Payload
           mv SallesAtelie.ipa ../../
