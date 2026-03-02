@@ -7,51 +7,62 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Install dependencies and build web
+      - name: Prepare Environment and Web Build
         script: |
           npm install
-          # Instalando o Capacitor de forma global e local para garantir
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npm install @capacitor/assets --save-dev
+          # Força a instalação dos pacotes necessários para o build nativo
+          npm install @capacitor/core @capacitor/cli @capacitor/ios @capacitor/assets
+          # Build da web (Verifique se no seu package.json o comando é 'build')
           npm run build
-      - name: Initialize and Sync Capacitor iOS
+      - name: Force Create iOS Project
         script: |
-          # 1. Força a inicialização do capacitor se o config não existir
-          if [ ! -f "capacitor.config.json" ]; then
-            npx cap init "Salles Atelie" "com.salles.atelie" --web-dir dist
-          fi
+          # Detecta a pasta de saída (Lovable geralmente usa 'dist')
+          WEB_DIR="dist"
+          [ -d "build" ] && WEB_DIR="build"
           
-          # 2. Adiciona a plataforma iOS (forçadamente)
-          # Se a pasta já existir, ele apenas ignora
-          npx cap add ios || true
+          # Remove a pasta ios se ela existir para evitar conflitos
+          rm -rf ios
           
-          # 3. Copia os arquivos da web para dentro do iOS e cria os arquivos nativos (Podfile, xcworkspace)
-          npx cap copy ios
+          # Inicializa o Capacitor e cria a pasta nativa
+          npx cap init "Salles Atelie" "com.salles.atelie" --web-dir $WEB_DIR
+          npx cap add ios
           npx cap sync ios
           
-          # 4. Gera os assets
+          # Gera ícones (se houver assets/icon.png)
           npx capacitor-assets generate --ios || true
       - name: Build Unsigned IPA
         script: |
+          # Verifica se a pasta foi criada, caso contrário interrompe com erro claro
+          if [ ! -d "ios/App" ]; then
+            echo "ERRO: A pasta ios/App não foi criada!"
+            exit 1
+          fi
+
           cd ios/App
-          
-          # Instala as dependências do iOS (CocoaPods)
           pod install
           
-          # Executa o build forçando a saída para uma pasta local
-          xcodebuild -workspace App.xcworkspace \
+          # Build direto para o binário .app
+          xcodebuild build \
+            -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            -derivedDataPath ./build_output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
-          
-          # Cria o pacote para AltStore
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+          # Criando o IPA para AltStore
           mkdir -p Payload
-          # Procura o .app dentro da pasta build que definimos acima
-          find build -name "App.app" -exec cp -R {} Payload/ \;
+          # O arquivo .app fica dentro da pasta build_output que definimos
+          APP_PATH=$(find ./build_output -name "*.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERRO: Arquivo .app não encontrado!"
+            exit 1
+          fi
+          
+          cp -R "$APP_PATH" Payload/
           zip -r SallesAtelie.ipa Payload
           mv SallesAtelie.ipa ../../
     artifacts:
