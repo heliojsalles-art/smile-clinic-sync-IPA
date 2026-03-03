@@ -5,6 +5,7 @@ workflows:
     environment:
       node: 20
       xcode: latest
+      cocoapods: default
     scripts:
       - name: Install and Build Web
         script: |
@@ -24,22 +25,24 @@ workflows:
           EOF
           rm -rf ios
           npx cap add ios || true
-          npx cap sync ios || true
-      - name: Build Unsigned via SPM (No CocoaPods)
+      - name: Fix and Install Pods
         script: |
           cd ios/App
+          # Ajusta o Podfile para iOS 13 (Requisito do Capacitor 6) sem corromper o projeto
+          echo "platform :ios, '13.0'
+          use_frameworks!
+          target 'App' do
+            pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+            pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+          end" > Podfile
           
-          # 1. Remove as fases de build do CocoaPods que travam o Xcode
-          # Isso limpa o erro de "Podfile.lock" e "Check Pods Manifest"
-          sed -i '' '/\[CP\]/d' App.xcodeproj/project.pbxproj
-          sed -i '' '/Pods-App/d' App.xcodeproj/project.pbxproj
-          
-          # 2. Resolve dependências via Swift Package Manager
-          xcodebuild -resolvePackageDependencies
-          
-          # 3. Build Unsigned para iPhone real (iOS 13+ é o padrão SPM)
+          pod install
+      - name: Xcode Build Unsigned
+        script: |
+          cd ios/App
+          # Build usando o Workspace gerado pelo pod install
           xcodebuild build \
-            -project App.xcodeproj \
+            -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
@@ -49,7 +52,7 @@ workflows:
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # 4. Empacota o IPA
+          # Empacota o IPA
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
