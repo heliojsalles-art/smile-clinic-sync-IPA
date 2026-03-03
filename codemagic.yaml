@@ -11,12 +11,13 @@ workflows:
           npm install
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npm run build
-      - name: Capacitor Sync
+      - name: Capacitor Manual Config and Sync
         script: |
+          # 1. Define a pasta web (Vite usa dist)
           WEB_DIR="dist"
           [ ! -d "dist" ] && WEB_DIR="."
           
-          # 1. Cria o arquivo de configuração manualmente (Garante o appId)
+          # 2. Cria o arquivo de configuração manualmente (Resolve o erro de appId)
           cat <<EOF > capacitor.config.json
           {
             "appId": "com.salles.atelie",
@@ -26,17 +27,17 @@ workflows:
           }
           EOF
 
-          # 2. Remove lixo e adiciona a plataforma
+          # 3. Adiciona a plataforma iOS do zero
           rm -rf ios
           npx cap add ios
           npx cap sync ios
       - name: Xcode Build Unsigned
         script: |
           cd ios/App
-          # Resolve dependências modernas do Swift
+          # Resolve dependências via Swift Package Manager
           xcodebuild -resolvePackageDependencies
           
-          # Build usando o .xcodeproj
+          # Build usando o arquivo de projeto (.xcodeproj)
           xcodebuild build \
             -project App.xcodeproj \
             -scheme App \
@@ -48,7 +49,7 @@ workflows:
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Criar IPA para AltStore
+          # Criar o IPA para AltStore
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
