@@ -1,4 +1,4 @@
- workflows:
+workflows:
   ios-build-altstore:
     name: Build iOS for AltStore
     instance_type: mac_mini_m2
@@ -13,11 +13,8 @@
           npm run build
       - name: Initialize Capacitor iOS
         script: |
-          # Define a pasta web (Vite usa dist)
           WEB_DIR="dist"
           [ ! -d "dist" ] && WEB_DIR="."
-          
-          # Remove lixo e recria o projeto nativo
           rm -rf ios
           npx cap init "Salles Atelie" "com.salles.atelie" --web-dir $WEB_DIR --confirm
           npx cap add ios
@@ -25,11 +22,9 @@
       - name: Build Unsigned IPA (SPM Mode)
         script: |
           cd ios/App
-          
-          # 1. Baixa as dependências do Swift (Não usa mais Pods/Podfile)
+          # Resolve dependências modernas (Sem CocoaPods)
           xcodebuild -resolvePackageDependencies
-          
-          # 2. Build usando o PROJETO (.xcodeproj) e não o WORKSPACE
+          # Build usando o PROJETO (.xcodeproj)
           xcodebuild build \
             -project App.xcodeproj \
             -scheme App \
@@ -40,16 +35,13 @@
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
-
-          # 3. Empacota o IPA para AltStore
+          # Empacota o IPA
           mkdir -p Payload
           APP_PATH=$(find ./build_output -name "App.app" | head -n 1)
-          
           if [ -z "$APP_PATH" ]; then
             echo "ERRO: O arquivo .app não foi gerado!"
             exit 1
           fi
-          
           cp -R "$APP_PATH" Payload/
           zip -r SallesAtelie.ipa Payload
           mv SallesAtelie.ipa ../../
