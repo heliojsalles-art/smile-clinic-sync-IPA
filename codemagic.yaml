@@ -5,14 +5,13 @@ workflows:
     environment:
       node: 20
       xcode: latest
-      cocoapods: default
     scripts:
       - name: Install and Build Web
         script: |
           npm install
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npm run build
-      - name: Capacitor Setup (No Pods)
+      - name: Capacitor Setup
         script: |
           WEB_DIR="dist"
           [ ! -d "dist" ] && WEB_DIR="."
@@ -25,34 +24,22 @@ workflows:
           EOF
           rm -rf ios
           npx cap add ios || true
-          npx cap copy ios
-      - name: Force Podfile and Install Pods
+          npx cap sync ios || true
+      - name: Build Unsigned via SPM (No CocoaPods)
         script: |
           cd ios/App
-          # Criamos o Podfile com iOS 14.0 e um script de pós-instalação para alinhar todos os plugins
-          cat <<EOF > Podfile
-          platform :ios, '14.0'
-          use_frameworks!
-          target 'App' do
-            pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
-            pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-          end
-
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              target.build_configurations.each do |config|
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
-              end
-            end
-          end
-          EOF
           
-          pod install
-      - name: Xcode Build Unsigned
-        script: |
-          cd ios/App
+          # 1. Remove as fases de build do CocoaPods que travam o Xcode
+          # Isso limpa o erro de "Podfile.lock" e "Check Pods Manifest"
+          sed -i '' '/\[CP\]/d' App.xcodeproj/project.pbxproj
+          sed -i '' '/Pods-App/d' App.xcodeproj/project.pbxproj
+          
+          # 2. Resolve dependências via Swift Package Manager
+          xcodebuild -resolvePackageDependencies
+          
+          # 3. Build Unsigned para iPhone real (iOS 13+ é o padrão SPM)
           xcodebuild build \
-            -workspace App.xcworkspace \
+            -project App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
@@ -62,6 +49,7 @@ workflows:
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
+          # 4. Empacota o IPA
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
