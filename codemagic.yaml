@@ -15,8 +15,6 @@ workflows:
         script: |
           WEB_DIR="dist"
           [ ! -d "dist" ] && WEB_DIR="."
-          
-          # Cria o config forçando o uso do iOS 13 como alvo
           cat <<EOF > capacitor.config.json
           {
             "appId": "com.salles.atelie",
@@ -25,19 +23,22 @@ workflows:
             "ios": { "path": "ios" }
           }
           EOF
-
           rm -rf ios
-          # Adiciona a plataforma SEM rodar o pod install (que é onde dá o erro)
           npx cap add ios
+          # Sincroniza sem instalar Pods para evitar o erro de target
           npx cap sync ios --no-pod-install || true
-      - name: Xcode Build Unsigned (SPM Mode)
+      - name: Clean Pods References and Build
         script: |
           cd ios/App
           
-          # 1. Resolve dependências via Swift Package Manager (ignora o erro do CocoaPods)
+          # REMOVE REFERÊNCIAS AO COCOAPODS NO PROJETO (O "pulo do gato")
+          # Isso remove a dependência de arquivos .xcconfig que não existem
+          sed -i '' '/Pods-App/d' App.xcodeproj/project.pbxproj
+          
+          # Resolve via Swift Package Manager
           xcodebuild -resolvePackageDependencies
           
-          # 2. Build usando o .xcodeproj direto com alvo iOS 13+
+          # Build Unsigned
           xcodebuild build \
             -project App.xcodeproj \
             -scheme App \
@@ -50,7 +51,7 @@ workflows:
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # 3. Empacota o IPA
+          # Empacota o IPA
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
