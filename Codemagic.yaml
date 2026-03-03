@@ -1,6 +1,6 @@
 workflows:
-  ios-build-altstore:
-    name: Build iOS for AltStore
+  build-ios-v2:
+    name: Build iOS Final AltStore
     instance_type: mac_mini_m2
     environment:
       node: 20
@@ -9,9 +9,9 @@ workflows:
       - name: Install and Build Web
         script: |
           npm install
-          npm install @capacitor/core @capacitor/cli @capacitor/ios @capacitor/assets
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
           npm run build
-      - name: Initialize Capacitor iOS
+      - name: Capacitor Sync
         script: |
           WEB_DIR="dist"
           [ ! -d "dist" ] && WEB_DIR="."
@@ -19,29 +19,27 @@ workflows:
           npx cap init "Salles Atelie" "com.salles.atelie" --web-dir $WEB_DIR --confirm
           npx cap add ios
           npx cap sync ios
-      - name: Build Unsigned IPA (SPM Mode)
+      - name: Xcode Build Unsigned
         script: |
           cd ios/App
-          # Resolve dependências modernas (Sem CocoaPods)
+          # Resolve dependências via Swift Package Manager (sem CocoaPods)
           xcodebuild -resolvePackageDependencies
-          # Build usando o PROJETO (.xcodeproj)
+          
+          # Build usando o .xcodeproj (não xcworkspace)
           xcodebuild build \
             -project App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath ./build_output \
+            -derivedDataPath ./output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
-          # Empacota o IPA
+
+          # Criar IPA
           mkdir -p Payload
-          APP_PATH=$(find ./build_output -name "App.app" | head -n 1)
-          if [ -z "$APP_PATH" ]; then
-            echo "ERRO: O arquivo .app não foi gerado!"
-            exit 1
-          fi
+          APP_PATH=$(find ./output -name "App.app" | head -n 1)
           cp -R "$APP_PATH" Payload/
           zip -r SallesAtelie.ipa Payload
           mv SallesAtelie.ipa ../../
