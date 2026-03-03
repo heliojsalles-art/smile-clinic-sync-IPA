@@ -5,6 +5,7 @@ workflows:
     environment:
       node: 20
       xcode: latest
+      cocoapods: default
     scripts:
       - name: Install and Build Web
         script: |
@@ -19,39 +20,33 @@ workflows:
           {
             "appId": "com.salles.atelie",
             "appName": "Salles Atelie",
-            "webDir": "$WEB_DIR",
-            "ios": { "path": "ios" }
+            "webDir": "$WEB_DIR"
           }
           EOF
           rm -rf ios
           npx cap add ios
-          npx cap sync ios || true
-      - name: Clean Pods Scripts and Build
+      - name: Fix Podfile and Install Pods
         script: |
           cd ios/App
-          
-          # 1. Remove as fases de build do CocoaPods [CP] do arquivo do projeto
-          # Isso mata o script que está dando erro de Podfile.lock
-          sed -i '' '/\[CP\]/d' App.xcodeproj/project.pbxproj
-          sed -i '' '/Pods-App/d' App.xcodeproj/project.pbxproj
-          
-          # 2. Resolve via Swift Package Manager
-          xcodebuild -resolvePackageDependencies
-          
-          # 3. Build Unsigned
+          # Força o Podfile a aceitar o deployment target do Capacitor 6
+          sed -i '' "s/platform :ios, '11.0'/platform :ios, '13.0'/g" Podfile
+          pod install
+      - name: Xcode Build Unsigned
+        script: |
+          cd ios/App
+          # Build usando o .xcworkspace (já que instalamos os Pods)
           xcodebuild build \
-            -project App.xcodeproj \
+            -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath ./output \
-            IPHONEOS_DEPLOYMENT_TARGET=13.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # 4. Empacota o IPA
+          # Empacota o IPA
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
