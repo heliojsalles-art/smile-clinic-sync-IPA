@@ -15,17 +15,28 @@ workflows:
         script: |
           WEB_DIR="dist"
           [ ! -d "dist" ] && WEB_DIR="."
+          
+          # 1. Cria o arquivo de configuração manualmente (Garante o appId)
+          cat <<EOF > capacitor.config.json
+          {
+            "appId": "com.salles.atelie",
+            "appName": "Salles Atelie",
+            "webDir": "$WEB_DIR",
+            "bundledWebRuntime": false
+          }
+          EOF
+
+          # 2. Remove lixo e adiciona a plataforma
           rm -rf ios
-          npx cap init "Salles Atelie" "com.salles.atelie" --web-dir $WEB_DIR --confirm
           npx cap add ios
           npx cap sync ios
       - name: Xcode Build Unsigned
         script: |
           cd ios/App
-          # Resolve dependências via Swift Package Manager (sem CocoaPods)
+          # Resolve dependências modernas do Swift
           xcodebuild -resolvePackageDependencies
           
-          # Build usando o .xcodeproj (não xcworkspace)
+          # Build usando o .xcodeproj
           xcodebuild build \
             -project App.xcodeproj \
             -scheme App \
@@ -37,9 +48,13 @@ workflows:
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Criar IPA
+          # Criar IPA para AltStore
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERRO: O arquivo .app não foi gerado!"
+            exit 1
+          fi
           cp -R "$APP_PATH" Payload/
           zip -r SallesAtelie.ipa Payload
           mv SallesAtelie.ipa ../../
