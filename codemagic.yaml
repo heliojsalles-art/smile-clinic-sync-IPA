@@ -11,45 +11,46 @@ workflows:
           npm install
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npm run build
-      - name: Capacitor Manual Config and Sync
+      - name: Capacitor Manual Config
         script: |
-          # 1. Define a pasta web (Vite usa dist)
           WEB_DIR="dist"
           [ ! -d "dist" ] && WEB_DIR="."
           
-          # 2. Cria o arquivo de configuração manualmente (Resolve o erro de appId)
+          # Cria o config forçando o uso do iOS 13 como alvo
           cat <<EOF > capacitor.config.json
           {
             "appId": "com.salles.atelie",
             "appName": "Salles Atelie",
             "webDir": "$WEB_DIR",
-            "bundledWebRuntime": false
+            "ios": { "path": "ios" }
           }
           EOF
 
-          # 3. Adiciona a plataforma iOS do zero
           rm -rf ios
+          # Adiciona a plataforma SEM rodar o pod install (que é onde dá o erro)
           npx cap add ios
-          npx cap sync ios
-      - name: Xcode Build Unsigned
+          npx cap sync ios --no-pod-install || true
+      - name: Xcode Build Unsigned (SPM Mode)
         script: |
           cd ios/App
-          # Resolve dependências via Swift Package Manager
+          
+          # 1. Resolve dependências via Swift Package Manager (ignora o erro do CocoaPods)
           xcodebuild -resolvePackageDependencies
           
-          # Build usando o arquivo de projeto (.xcodeproj)
+          # 2. Build usando o .xcodeproj direto com alvo iOS 13+
           xcodebuild build \
             -project App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath ./output \
+            IPHONEOS_DEPLOYMENT_TARGET=13.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Criar o IPA para AltStore
+          # 3. Empacota o IPA
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
