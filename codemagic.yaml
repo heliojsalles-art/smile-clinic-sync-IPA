@@ -25,21 +25,20 @@ workflows:
           EOF
           rm -rf ios
           npx cap add ios
-          # O sync vai falhar nos pods, mas continuamos para o SPM
           npx cap sync ios || true
       - name: Clean Pods Scripts and Build
         script: |
           cd ios/App
           
-          # 1. Remove as fases de script do CocoaPods do projeto Xcode
-          # Isso deleta os scripts [CP] que estão travando seu build
+          # 1. Remove as fases de build do CocoaPods [CP] do arquivo do projeto
+          # Isso mata o script que está dando erro de Podfile.lock
           sed -i '' '/\[CP\]/d' App.xcodeproj/project.pbxproj
           sed -i '' '/Pods-App/d' App.xcodeproj/project.pbxproj
           
           # 2. Resolve via Swift Package Manager
           xcodebuild -resolvePackageDependencies
           
-          # 3. Build Unsigned com alvo iOS 13+
+          # 3. Build Unsigned
           xcodebuild build \
             -project App.xcodeproj \
             -scheme App \
@@ -52,7 +51,7 @@ workflows:
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # 4. Empacota o IPA para AltStore
+          # 4. Empacota o IPA
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
