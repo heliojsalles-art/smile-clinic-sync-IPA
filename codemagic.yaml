@@ -28,19 +28,19 @@ workflows:
       - name: Fix and Install Pods
         script: |
           cd ios/App
-          # Ajusta o Podfile para iOS 13 (Requisito do Capacitor 6) sem corromper o projeto
-          echo "platform :ios, '13.0'
+          # Força o alvo para iOS 15.0 para evitar incompatibilidade do Capacitor 6
+          echo "platform :ios, '15.0'
           use_frameworks!
           target 'App' do
             pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
             pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
           end" > Podfile
           
-          pod install
+          # 'pod update' força a resolução das dependências com o novo target
+          pod update
       - name: Xcode Build Unsigned
         script: |
           cd ios/App
-          # Build usando o Workspace gerado pelo pod install
           xcodebuild build \
             -workspace App.xcworkspace \
             -scheme App \
