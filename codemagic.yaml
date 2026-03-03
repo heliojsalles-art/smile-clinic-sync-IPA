@@ -12,7 +12,7 @@ workflows:
           npm install
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npm run build
-      - name: Capacitor Manual Config
+      - name: Capacitor Setup (No Pods)
         script: |
           WEB_DIR="dist"
           [ ! -d "dist" ] && WEB_DIR="."
@@ -24,17 +24,22 @@ workflows:
           }
           EOF
           rm -rf ios
-          npx cap add ios
+          # Força a criação da pasta ignorando o erro de Pods
+          npx cap add ios || true
+          npx cap copy ios
       - name: Fix Podfile and Install Pods
         script: |
           cd ios/App
-          # Força o Podfile a aceitar o deployment target do Capacitor 6
+          # Se o Podfile não existir por erro do add ios, nós criamos um padrão para o Cap 6
+          if [ ! -f "Podfile" ]; then
+            npx cap ios update
+          fi
+          # Troca o target de 11.0 para 13.0 (requisito do Capacitor 6)
           sed -i '' "s/platform :ios, '11.0'/platform :ios, '13.0'/g" Podfile
           pod install
       - name: Xcode Build Unsigned
         script: |
           cd ios/App
-          # Build usando o .xcworkspace (já que instalamos os Pods)
           xcodebuild build \
             -workspace App.xcworkspace \
             -scheme App \
@@ -46,7 +51,6 @@ workflows:
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Empacota o IPA
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
