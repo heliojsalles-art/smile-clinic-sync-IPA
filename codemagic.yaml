@@ -24,22 +24,28 @@ workflows:
           }
           EOF
           rm -rf ios
-          # Força a criação da pasta ignorando o erro de Pods
+          # Adiciona a plataforma. O '|| true' impede que o build pare no erro de Pods
           npx cap add ios || true
           npx cap copy ios
-      - name: Fix Podfile and Install Pods
+      - name: Force Podfile and Install Pods
         script: |
           cd ios/App
-          # Se o Podfile não existir por erro do add ios, nós criamos um padrão para o Cap 6
-          if [ ! -f "Podfile" ]; then
-            npx cap ios update
-          fi
-          # Troca o target de 11.0 para 13.0 (requisito do Capacitor 6)
-          sed -i '' "s/platform :ios, '11.0'/platform :ios, '13.0'/g" Podfile
+          # Criamos o Podfile do zero com o target 13.0 para aceitar o Capacitor 6
+          cat <<EOF > Podfile
+          platform :ios, '13.0'
+          use_frameworks!
+          target 'App' do
+            pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+            pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+          end
+          EOF
+          
+          # Tenta instalar as dependências nativas
           pod install
       - name: Xcode Build Unsigned
         script: |
           cd ios/App
+          # Se o pod install funcionou, o .xcworkspace existirá
           xcodebuild build \
             -workspace App.xcworkspace \
             -scheme App \
@@ -51,6 +57,7 @@ workflows:
             CODE_SIGNING_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
+          # Empacota o IPA para AltStore
           mkdir -p Payload
           APP_PATH=$(find ./output -name "App.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
