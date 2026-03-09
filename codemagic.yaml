@@ -71,34 +71,37 @@ workflows:
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             build
 
-      - name: Create IPA file
+      - name: Create IPA
         script: |
-          cd ios/App
-
-          echo "=== Procurando App.app em Release-iphoneos ==="
-          find build -type d -name "*.app" || true
-
-          APP_PATH=$(find build -type d -path "*Release-iphoneos/App.app" | head -n 1)
-
-          if [ -z "$APP_PATH" ]; then
-            echo "ERRO: App.app não encontrado em Release-iphoneos"
-            exit 1
-          fi
+          APP_PATH=$(find "$CM_BUILD_DIR/ios/App/build" -type d -path "*Release-iphoneos/App.app" | head -n 1)
 
           echo "APP_PATH=$APP_PATH"
 
-          rm -rf Payload
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/App.app
+          if [ -z "$APP_PATH" ]; then
+            echo "ERRO: App.app não encontrado"
+            find "$CM_BUILD_DIR/ios/App/build" -type d -name "*.app" || true
+            exit 1
+          fi
 
-          rm -f ../../SmileClinicSync.ipa
-          cd ../..
-          /usr/bin/zip -r SmileClinicSync.ipa Payload
+          rm -rf /tmp/ipa_build
+          mkdir -p /tmp/ipa_build/Payload
+          cp -R "$APP_PATH" /tmp/ipa_build/Payload/App.app
 
-          echo "=== IPA criado ==="
-          ls -lah SmileClinicSync.ipa
-          unzip -l SmileClinicSync.ipa | head -40
+          cd /tmp/ipa_build
+          /usr/bin/zip -qry /tmp/SmileClinicSync.ipa Payload
+
+          echo "=== Arquivo final ==="
+          ls -lah /tmp/SmileClinicSync.ipa
+          echo "=== Conteúdo do IPA ==="
+          unzip -l /tmp/SmileClinicSync.ipa | head -40
+
+      - name: Verify files
+        script: |
+          echo "=== Arquivos em /tmp ==="
+          ls -lah /tmp | grep -E "SmileClinicSync|ipa" || true
+          echo "=== IPA existe? ==="
+          test -f /tmp/SmileClinicSync.ipa && echo "IPA OK"
 
     artifacts:
-      - SmileClinicSync.ipa
+      - /tmp/SmileClinicSync.ipa
       - /tmp/xcodebuild_logs/*.log
