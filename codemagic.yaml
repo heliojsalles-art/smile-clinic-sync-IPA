@@ -1,53 +1,66 @@
 workflows:
-  build_ios_unsigned:
-    name: Build iOS IPA
+  build-ios-v2:
+    name: Build iOS Final AltStore
     instance_type: mac_mini_m2
-
     environment:
       node: 20
       xcode: latest
-
+      cocoapods: default
     scripts:
-      - name: Install dependencies
-        script: npm install
-
-      - name: Build web app
-        script: npm run build
-
-      - name: Install Capacitor
-        script: npm install @capacitor/core @capacitor/cli @capacitor/ios
-
-      - name: Create capacitor config
+      - name: Install and Build Web
         script: |
-          echo "import type { CapacitorConfig } from '@capacitor/cli';" > capacitor.config.ts
-          echo "const config: CapacitorConfig = { appId: 'com.heliosalles.smileclinicsync', appName: 'Smile Clinic Sync', webDir: 'dist' };" >> capacitor.config.ts
-          echo "export default config;" >> capacitor.config.ts
-
-      - name: Add iOS
-        script: npx cap add ios
-
-      - name: Sync iOS
-        script: npx cap sync ios
-
-      - name: Build iOS
+          npm install
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+          npm run build
+      - name: Capacitor Setup
+        script: |
+          WEB_DIR="dist"
+          [ ! -d "dist" ] && WEB_DIR="."
+          cat <<EOF > capacitor.config.json
+          {
+            "appId": "com.salles.atelie",
+            "appName": "Salles Atelie",
+            "webDir": "$WEB_DIR"
+          }
+          EOF
+          rm -rf ios
+          npx cap add ios || true
+      - name: Fix and Install Pods
         script: |
           cd ios/App
-          xcodebuild \
+          # Força o alvo para iOS 15.0 para evitar incompatibilidade do Capacitor 6
+          echo "platform :ios, '15.0'
+          use_frameworks!
+          target 'App' do
+            pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+            pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+          end" > Podfile
+          
+          # 'pod update' força a resolução das dependências com o novo target
+          pod update
+      - name: Xcode Build Unsigned
+        script: |
+          cd ios/App
+          xcodebuild build \
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            -derivedDataPath ./output \
             CODE_SIGNING_ALLOWED=NO \
-            clean build
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-      - name: Create IPA
-        script: |
-          cd ios/App
-          mkdir Payload
-          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
-          zip -r SmileClinicSync.ipa Payload
-          mv SmileClinicSync.ipa $CM_BUILD_DIR/
-
+          # Empacota o IPA
+          mkdir -p Payload
+          APP_PATH=$(find ./output -name "App.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERRO: O arquivo .app não foi gerado!"
+            exit 1
+          fi
+          cp -R "$APP_PATH" Payload/
+          zip -r SallesAtelie.ipa Payload
+          mv SallesAtelie.ipa ../../
     artifacts:
-      - SmileClinicSync.ipa
+      - "*.ipa"
