@@ -1,66 +1,89 @@
 workflows:
-  build-ios-v2:
-    name: Build iOS Final AltStore
+  build_ios_unsigned:
+    name: Build iOS Unsigned IPA
     instance_type: mac_mini_m2
+
     environment:
       node: 20
       xcode: latest
       cocoapods: default
+
+    cache:
+      cache_paths:
+        - ~/.npm
+        - ~/Library/Caches/CocoaPods
+        - ios/App/Pods
+
     scripts:
-      - name: Install and Build Web
+      - name: Install dependencies
         script: |
-          npm install
+          npm ci || npm install
+
+      - name: Install Capacitor
+        script: |
           npm install @capacitor/core @capacitor/cli @capacitor/ios
+
+      - name: Build web app
+        script: |
           npm run build
-      - name: Capacitor Setup
+          test -d dist || { echo "Pasta dist não foi gerada"; exit 1; }
+
+      - name: Create capacitor config
         script: |
-          WEB_DIR="dist"
-          [ ! -d "dist" ] && WEB_DIR="."
-          cat <<EOF > capacitor.config.json
-          {
-            "appId": "com.salles.atelie",
-            "appName": "Salles Atelie",
-            "webDir": "$WEB_DIR"
-          }
+          cat > capacitor.config.ts <<'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
+
+          const config: CapacitorConfig = {
+            appId: 'com.heliosalles.smileclinicsync',
+            appName: 'Smile Clinic Sync',
+            webDir: 'dist',
+            bundledWebRuntime: false,
+          };
+
+          export default config;
           EOF
+
+      - name: Add iOS platform
+        script: |
           rm -rf ios
-          npx cap add ios || true
-      - name: Fix and Install Pods
+          npx cap add ios
+
+      - name: Sync iOS project
+        script: |
+          npx cap sync ios
+
+      - name: Force iOS deployment target
+        script: |
+          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '15.0'/g" ios/App/Podfile || true
+          cd ios/App
+          pod install
+
+      - name: Build unsigned .app
         script: |
           cd ios/App
-          # Força o alvo para iOS 15.0 para evitar incompatibilidade do Capacitor 6
-          echo "platform :ios, '15.0'
-          use_frameworks!
-          target 'App' do
-            pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
-            pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-          end" > Podfile
-          
-          # 'pod update' força a resolução das dependências com o novo target
-          pod update
-      - name: Xcode Build Unsigned
-        script: |
-          cd ios/App
-          xcodebuild build \
+          xcodebuild \
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath ./output \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            clean build
 
-          # Empacota o IPA
-          mkdir -p Payload
-          APP_PATH=$(find ./output -name "App.app" | head -n 1)
-          if [ -z "$APP_PATH" ]; then
-            echo "ERRO: O arquivo .app não foi gerado!"
-            exit 1
-          fi
-          cp -R "$APP_PATH" Payload/
-          zip -r SallesAtelie.ipa Payload
-          mv SallesAtelie.ipa ../../
+      - name: Package .ipa
+        script: |
+          cd ios/App
+          APP_PATH=$(find build -type d -name "App.app" | head -n 1)
+          test -n "$APP_PATH" || { echo "App.app não encontrado"; exit 1; }
+
+          rm -rf Payload SmileClinicSync.ipa
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/App.app
+          zip -r SmileClinicSync.ipa Payload
+          mv SmileClinicSync.ipa $CM_BUILD_DIR/SmileClinicSync.ipa
+
     artifacts:
-      - "*.ipa"
+      - SmileClinicSync.ipa
