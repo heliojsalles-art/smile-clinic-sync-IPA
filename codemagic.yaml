@@ -1,6 +1,6 @@
 workflows:
-  ios_unsigned_ipa_for_sideloadly:
-    name: Smile Clinic Sync Unsigned IPA
+  ios_unsigned_ipa:
+    name: Smile Clinic Sync IPA
     instance_type: mac_mini_m2
     max_build_duration: 60
 
@@ -13,7 +13,6 @@ workflows:
       cache_paths:
         - $HOME/.npm
         - $HOME/Library/Caches/CocoaPods
-        - ~/Library/Developer/Xcode/DerivedData
 
     scripts:
       - name: Show versions
@@ -29,18 +28,17 @@ workflows:
 
       - name: Ensure capacitor config exists
         script: |
-          if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
-            cat > capacitor.config.json <<'EOF'
-            {
-              "appId": "com.heliosalles.smileclinicsync",
-              "appName": "Smile Clinic Sync",
-              "webDir": "dist",
-              "server": {
-                "iosScheme": "https"
-              }
+          rm -f capacitor.config.ts
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.heliosalles.smileclinicsync",
+            "appName": "Smile Clinic Sync",
+            "webDir": "dist",
+            "server": {
+              "iosScheme": "https"
             }
-            EOF
-          fi
+          }
+          EOF
 
       - name: Build web app
         script: |
@@ -57,9 +55,10 @@ workflows:
           cd ios/App
           pod install
 
-      - name: Build for real iPhone device
+      - name: Build iOS app for device
         script: |
           cd ios/App
+          rm -rf build
           xcodebuild \
             -workspace App.xcworkspace \
             -scheme App \
@@ -69,41 +68,36 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             build
 
-      - name: Locate built app
+      - name: Create IPA file
         script: |
           cd ios/App
+
+          echo "=== Procurando App.app em Release-iphoneos ==="
           find build -type d -name "*.app" || true
-          APP_PATH=$(find build -type d -path "*Release-iphoneos/*.app" | head -n 1)
+
+          APP_PATH=$(find build -type d -path "*Release-iphoneos/App.app" | head -n 1)
 
           if [ -z "$APP_PATH" ]; then
-            echo "Nenhum .app de iphoneos foi encontrado."
-            echo "Conteúdo encontrado:"
-            find build -maxdepth 6 -type d | sed -n '1,200p'
+            echo "ERRO: App.app não encontrado em Release-iphoneos"
             exit 1
           fi
 
-          echo "$APP_PATH" > /tmp/app_path.txt
           echo "APP_PATH=$APP_PATH"
 
-      - name: Create unsigned IPA
-        script: |
-          cd ios/App
-          APP_PATH=$(cat /tmp/app_path.txt)
-
-          rm -rf Payload SmileClinicSync.ipa
+          rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/App.app
 
-          /usr/bin/zip -qry SmileClinicSync.ipa Payload
-          mv SmileClinicSync.ipa ../../SmileClinicSync.ipa
-
-      - name: Verify IPA
-        script: |
+          rm -f ../../SmileClinicSync.ipa
           cd ../..
+          /usr/bin/zip -r SmileClinicSync.ipa Payload
+
+          echo "=== IPA criado ==="
           ls -lah SmileClinicSync.ipa
-          unzip -l SmileClinicSync.ipa | sed -n '1,80p'
+          unzip -l SmileClinicSync.ipa | head -40
 
     artifacts:
       - SmileClinicSync.ipa
