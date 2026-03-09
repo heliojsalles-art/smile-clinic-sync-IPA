@@ -1,20 +1,53 @@
 workflows:
-  organiza_android_debug:
-    name: Organiza Android Debug
-    max_build_duration: 60
+  build_ios_unsigned:
+    name: Build iOS IPA
+    instance_type: mac_mini_m2
 
     environment:
       node: 20
-      java: 21
+      xcode: latest
 
     scripts:
-      - npm install
-      - npm run build
-      - npx cap sync android
-      - |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
+      - name: Install dependencies
+        script: npm install
+
+      - name: Build web app
+        script: npm run build
+
+      - name: Install Capacitor
+        script: npm install @capacitor/core @capacitor/cli @capacitor/ios
+
+      - name: Create capacitor config
+        script: |
+          echo "import type { CapacitorConfig } from '@capacitor/cli';" > capacitor.config.ts
+          echo "const config: CapacitorConfig = { appId: 'com.heliosalles.smileclinicsync', appName: 'Smile Clinic Sync', webDir: 'dist' };" >> capacitor.config.ts
+          echo "export default config;" >> capacitor.config.ts
+
+      - name: Add iOS
+        script: npx cap add ios
+
+      - name: Sync iOS
+        script: npx cap sync ios
+
+      - name: Build iOS
+        script: |
+          cd ios/App
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      - name: Create IPA
+        script: |
+          cd ios/App
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r SmileClinicSync.ipa Payload
+          mv SmileClinicSync.ipa $CM_BUILD_DIR/
 
     artifacts:
-      - android/app/build/outputs/**/*.apk
+      - SmileClinicSync.ipa
