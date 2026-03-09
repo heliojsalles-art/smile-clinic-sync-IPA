@@ -18,9 +18,9 @@ scripts:
     script: |
       npm run build
 
-  - name: Create capacitor config
+  - name: Create Capacitor config
     script: |
-      cat > capacitor.config.ts <<'EOF'
+      cat > capacitor.config.ts <<EOF
       import type { CapacitorConfig } from '@capacitor/cli';
 
       const config: CapacitorConfig = {
@@ -32,34 +32,27 @@ scripts:
       export default config;
       EOF
 
-  - name: Add iOS
+  - name: Add iOS platform
     script: |
       npx cap add ios
 
-  - name: Sync
+  - name: Sync iOS project
     script: |
       npx cap sync ios
 
-  - name: Build iOS
+  - name: Install CocoaPods
+    script: |
+      cd ios/App
+      pod install
+
+  - name: Build iOS app
     script: |
       cd ios/App
       xcodebuild \
-      -workspace App.xcworkspace \
-      -scheme App \
-      -configuration Release \
-      -sdk iphoneos \
-      -derivedDataPath build \
-      CODE_SIGNING_ALLOWED=NO \
-      clean build
-
-  - name: Package IPA
-    script: |
-      cd ios/App
-      mkdir Payload
-      cp -r build/Build/Products/Release-iphoneos/App.app Payload/
-      zip -r SmileClinicSync.ipa Payload
-      mv SmileClinicSync.ipa $CM_BUILD_DIR/
-
-artifacts:
-  - SmileClinicSync.ipa
+        -workspace App.xcworkspace \
+        -scheme App \
+        -configuration Release \
+        -sdk iphoneos \
+        -derivedDataPath build \
+        CODE_S_
 ```
