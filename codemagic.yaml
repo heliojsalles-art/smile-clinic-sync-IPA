@@ -1,12 +1,19 @@
 workflows:
-  ios-ipa:
-    name: Organizza IPA
+  ios_unsigned_ipa:
+    name: Smile Clinic Sync IPA
     instance_type: mac_mini_m2
     max_build_duration: 60
 
     environment:
+      node: 20
       xcode: latest
       cocoapods: default
+
+    cache:
+      cache_paths:
+        - $HOME/.npm
+        - $HOME/Library/Caches/CocoaPods
+        - ~/Library/Developer/Xcode/DerivedData
 
     scripts:
       - name: Show versions
@@ -14,27 +21,37 @@ workflows:
           node -v
           npm -v
           xcodebuild -version
+          pod --version
 
-      - name: Install dependencies
+      - name: Install web dependencies
         script: |
           npm install
+
+      - name: Install Capacitor packages
+        script: |
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
 
       - name: Build web app
         script: |
           npm run build
 
-      - name: Install Capacitor
+      - name: Create capacitor config
         script: |
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.heliosalles.smileclinicsync",
+            "appName": "Smile Clinic Sync",
+            "webDir": "dist",
+            "server": {
+              "iosScheme": "https"
+            }
+          }
+          EOF
 
-      - name: Create iOS project if missing
+      - name: Recreate iOS platform
         script: |
-          if [ ! -d ios ]; then
-            npx cap add ios
-          fi
-
-      - name: Sync Capacitor
-        script: |
+          rm -rf ios
+          npx cap add ios
           npx cap sync ios
 
       - name: Install CocoaPods
@@ -42,7 +59,7 @@ workflows:
           cd ios/App
           pod install
 
-      - name: Build iOS device app
+      - name: Build unsigned iPhone app
         script: |
           cd ios/App
           xcodebuild \
@@ -50,21 +67,39 @@ workflows:
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             build
 
-      - name: Create IPA
+      - name: Package IPA
         script: |
-          APP=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*Release-iphoneos*" | head -n 1)
+          cd ios/App
 
-          echo "APP PATH:"
-          echo $APP
+          APP_PATH=$(find build -type d -path "*Release-iphoneos/App.app" | head -n 1)
 
-          mkdir Payload
-          cp -R "$APP" Payload/
+          if [ -z "$APP_PATH" ]; then
+            echo "App.app não encontrado"
+            find build -type d -name "*.app"
+            exit 1
+          fi
 
-          zip -r Organizza.ipa Payload
+          rm -rf Payload SmileClinicSync.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/App.app
+
+          /usr/bin/zip -r SmileClinicSync.ipa Payload
+
+          mv SmileClinicSync.ipa ../../SmileClinicSync.ipa
+
+      - name: Verify artifact
+        script: |
+          ls -lah
+          unzip -l SmileClinicSync.ipa | head -50
 
     artifacts:
-      - Organizza.ipa
+      - SmileClinicSync.ipa
+      - ios/App/build/**/Build/**/*.app
+      - /tmp/xcodebuild_logs/*.log
