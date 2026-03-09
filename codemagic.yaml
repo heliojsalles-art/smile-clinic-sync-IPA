@@ -1,66 +1,93 @@
 workflows:
-  build-ios-v2:
-    name: Build iOS Final AltStore
+  ios-unsigned-ipa:
+    name: Organizza Unsigned IPA
     instance_type: mac_mini_m2
+    max_build_duration: 60
+
     environment:
-      node: 20
       xcode: latest
       cocoapods: default
+      vars:
+        APP_NAME: "Organizza"
+        BUNDLE_ID: "com.heliosalles.organizza"
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+
+    cache:
+      cache_paths:
+        - $HOME/.npm
+        - $HOME/Library/Caches/CocoaPods
+        - ~/Library/Developer/Xcode/DerivedData
+
     scripts:
-      - name: Install and Build Web
+      - name: Show versions
+        script: |
+          node -v
+          npm -v
+          xcodebuild -version
+          pod --version
+
+      - name: Install dependencies
         script: |
           npm install
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npm run build
-      - name: Capacitor Setup
-        script: |
-          WEB_DIR="dist"
-          [ ! -d "dist" ] && WEB_DIR="."
-          cat <<EOF > capacitor.config.json
-          {
-            "appId": "com.salles.atelie",
-            "appName": "Salles Atelie",
-            "webDir": "$WEB_DIR"
-          }
-          EOF
-          rm -rf ios
-          npx cap add ios || true
-      - name: Fix and Install Pods
-        script: |
-          cd ios/App
-          # Força o alvo para iOS 15.0 para evitar incompatibilidade do Capacitor 6
-          echo "platform :ios, '15.0'
-          use_frameworks!
-          target 'App' do
-            pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
-            pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-          end" > Podfile
-          
-          # 'pod update' força a resolução das dependências com o novo target
-          pod update
-      - name: Xcode Build Unsigned
-        script: |
-          cd ios/App
-          xcodebuild build \
-            -workspace App.xcworkspace \
-            -scheme App \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath ./output \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Empacota o IPA
-          mkdir -p Payload
-          APP_PATH=$(find ./output -name "App.app" | head -n 1)
+      - name: Build web app
+        script: |
+          npm run build
+
+      - name: Create iOS platform if missing
+        script: |
+          if [ ! -d ios/App ]; then
+            npx cap add ios
+          fi
+
+      - name: Sync Capacitor iOS
+        script: |
+          npx cap sync ios
+
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install
+
+      - name: Build unsigned iOS app for device
+        script: |
+          xcodebuild build \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Create IPA package
+        script: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -path "*/Build/Products/Release-iphoneos/App.app" | head -n 1)
+
           if [ -z "$APP_PATH" ]; then
-            echo "ERRO: O arquivo .app não foi gerado!"
+            echo "App.app not found"
             exit 1
           fi
+
+          rm -rf Payload Organizza.ipa
+          mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          zip -r SallesAtelie.ipa Payload
-          mv SallesAtelie.ipa ../../
+          zip -r Organizza.ipa Payload
+
+      - name: List generated files
+        script: |
+          ls -lah
+          find . -maxdepth 2 -name "*.ipa" -o -name "*.app"
+
     artifacts:
-      - "*.ipa"
+      - Organizza.ipa
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+      - /tmp/xcodebuild_logs/*.log
