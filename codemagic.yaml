@@ -1,29 +1,12 @@
 workflows:
-  ios-unsigned-ipa:
-    name: Organizza Unsigned IPA
+  ios-ipa:
+    name: Organizza IPA
     instance_type: mac_mini_m2
     max_build_duration: 60
 
     environment:
       xcode: latest
       cocoapods: default
-      vars:
-        APP_NAME: "Organizza"
-        BUNDLE_ID: "com.heliosalles.organizza"
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-          source: true
-
-    cache:
-      cache_paths:
-        - $HOME/.npm
-        - $HOME/Library/Caches/CocoaPods
-        - ~/Library/Developer/Xcode/DerivedData
 
     scripts:
       - name: Show versions
@@ -31,7 +14,6 @@ workflows:
           node -v
           npm -v
           xcodebuild -version
-          pod --version
 
       - name: Install dependencies
         script: |
@@ -41,13 +23,17 @@ workflows:
         script: |
           npm run build
 
-      - name: Create iOS platform if missing
+      - name: Install Capacitor
         script: |
-          if [ ! -d ios/App ]; then
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+
+      - name: Create iOS project if missing
+        script: |
+          if [ ! -d ios ]; then
             npx cap add ios
           fi
 
-      - name: Sync Capacitor iOS
+      - name: Sync Capacitor
         script: |
           npx cap sync ios
 
@@ -56,38 +42,29 @@ workflows:
           cd ios/App
           pod install
 
-      - name: Build unsigned iOS app for device
+      - name: Build iOS device app
         script: |
-          xcodebuild build \
-            -workspace ios/App/App.xcworkspace \
+          cd ios/App
+          xcodebuild \
+            -workspace App.xcworkspace \
             -scheme App \
-            -sdk iphoneos \
             -configuration Release \
-            CODE_SIGN_IDENTITY="" \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            build
 
-      - name: Create IPA package
+      - name: Create IPA
         script: |
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -type d -path "*/Build/Products/Release-iphoneos/App.app" | head -n 1)
+          APP=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*Release-iphoneos*" | head -n 1)
 
-          if [ -z "$APP_PATH" ]; then
-            echo "App.app not found"
-            exit 1
-          fi
+          echo "APP PATH:"
+          echo $APP
 
-          rm -rf Payload Organizza.ipa
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
+          mkdir Payload
+          cp -R "$APP" Payload/
+
           zip -r Organizza.ipa Payload
-
-      - name: List generated files
-        script: |
-          ls -lah
-          find . -maxdepth 2 -name "*.ipa" -o -name "*.app"
 
     artifacts:
       - Organizza.ipa
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
-      - /tmp/xcodebuild_logs/*.log
