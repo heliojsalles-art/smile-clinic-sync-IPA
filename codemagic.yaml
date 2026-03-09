@@ -1,58 +1,59 @@
 workflows:
-build_ios_unsigned:
-name: Build iOS Unsigned IPA
-instance_type: mac_mini_m2
+  build_ios_unsigned:
+    name: Build iOS Unsigned IPA
+    instance_type: mac_mini_m2
 
-```
-environment:
-  node: 20
-  xcode: latest
-  cocoapods: default
+    environment:
+      node: 20
+      xcode: latest
+      cocoapods: default
 
-scripts:
-  - name: Install dependencies
-    script: |
-      npm install
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm install
 
-  - name: Build web app
-    script: |
-      npm run build
+      - name: Build web app
+        script: |
+          npm run build
 
-  - name: Create Capacitor config
-    script: |
-      cat > capacitor.config.ts <<EOF
-      import type { CapacitorConfig } from '@capacitor/cli';
+      - name: Create capacitor config
+        script: |
+          echo "import type { CapacitorConfig } from '@capacitor/cli';" > capacitor.config.ts
+          echo "" >> capacitor.config.ts
+          echo "const config: CapacitorConfig = {" >> capacitor.config.ts
+          echo "  appId: 'com.heliosalles.smileclinicsync'," >> capacitor.config.ts
+          echo "  appName: 'Smile Clinic Sync'," >> capacitor.config.ts
+          echo "  webDir: 'dist'" >> capacitor.config.ts
+          echo "};" >> capacitor.config.ts
+          echo "" >> capacitor.config.ts
+          echo "export default config;" >> capacitor.config.ts
 
-      const config: CapacitorConfig = {
-        appId: 'com.heliosalles.smileclinicsync',
-        appName: 'Smile Clinic Sync',
-        webDir: 'dist'
-      };
+      - name: Add iOS platform
+        script: |
+          npx cap add ios
 
-      export default config;
-      EOF
+      - name: Sync iOS
+        script: |
+          npx cap sync ios
 
-  - name: Add iOS platform
-    script: |
-      npx cap add ios
+      - name: Install Pods
+        script: |
+          cd ios/App
+          pod install
 
-  - name: Sync iOS project
-    script: |
-      npx cap sync ios
+      - name: Build iOS
+        script: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" clean build
 
-  - name: Install CocoaPods
-    script: |
-      cd ios/App
-      pod install
+      - name: Package IPA
+        script: |
+          cd ios/App
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r SmileClinicSync.ipa Payload
+          mv SmileClinicSync.ipa $CM_BUILD_DIR/
 
-  - name: Build iOS app
-    script: |
-      cd ios/App
-      xcodebuild \
-        -workspace App.xcworkspace \
-        -scheme App \
-        -configuration Release \
-        -sdk iphoneos \
-        -derivedDataPath build \
-        CODE_S_
-```
+    artifacts:
+      - SmileClinicSync.ipa
