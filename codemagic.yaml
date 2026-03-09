@@ -23,30 +23,28 @@ workflows:
           xcodebuild -version
           pod --version
 
-      - name: Install web dependencies
+      - name: Install dependencies
         script: |
           npm install
 
-      - name: Install Capacitor packages
+      - name: Ensure capacitor config exists
         script: |
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
+          if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
+            cat > capacitor.config.json <<'EOF'
+            {
+              "appId": "com.heliosalles.smileclinicsync",
+              "appName": "Smile Clinic Sync",
+              "webDir": "dist",
+              "server": {
+                "iosScheme": "https"
+              }
+            }
+            EOF
+          fi
 
       - name: Build web app
         script: |
           npm run build
-
-      - name: Create capacitor config
-        script: |
-          cat > capacitor.config.json <<'EOF'
-          {
-            "appId": "com.heliosalles.smileclinicsync",
-            "appName": "Smile Clinic Sync",
-            "webDir": "dist",
-            "server": {
-              "iosScheme": "https"
-            }
-          }
-          EOF
 
       - name: Recreate iOS platform
         script: |
@@ -59,7 +57,7 @@ workflows:
           cd ios/App
           pod install
 
-      - name: Build unsigned iPhone app
+      - name: Build iOS app for device
         script: |
           cd ios/App
           xcodebuild \
@@ -74,7 +72,7 @@ workflows:
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             build
 
-      - name: Package IPA
+      - name: Create IPA file
         script: |
           cd ios/App
 
@@ -86,20 +84,21 @@ workflows:
             exit 1
           fi
 
-          rm -rf Payload SmileClinicSync.ipa
+          rm -rf Payload SmileClinicSync.ipa SmileClinicSync.ipa.zip
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/App.app
 
           /usr/bin/zip -r SmileClinicSync.ipa Payload
 
           mv SmileClinicSync.ipa ../../SmileClinicSync.ipa
+          ls -lah ../../SmileClinicSync.ipa
 
-      - name: Verify artifact
+      - name: Verify IPA contents
         script: |
-          ls -lah
+          cd ../..
+          file SmileClinicSync.ipa
           unzip -l SmileClinicSync.ipa | head -50
 
     artifacts:
       - SmileClinicSync.ipa
-      - ios/App/build/**/Build/**/*.app
       - /tmp/xcodebuild_logs/*.log
