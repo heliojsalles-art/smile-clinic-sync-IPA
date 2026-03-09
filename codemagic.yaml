@@ -1,6 +1,6 @@
 workflows:
-  ios_unsigned_ipa:
-    name: Smile Clinic Sync IPA
+  ios_unsigned_ipa_for_sideloadly:
+    name: Smile Clinic Sync Unsigned IPA
     instance_type: mac_mini_m2
     max_build_duration: 60
 
@@ -57,7 +57,7 @@ workflows:
           cd ios/App
           pod install
 
-      - name: Build iOS app for device
+      - name: Build for real iPhone device
         script: |
           cd ios/App
           xcodebuild \
@@ -69,35 +69,41 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             build
 
-      - name: Create IPA file
+      - name: Locate built app
         script: |
           cd ios/App
-
-          APP_PATH=$(find build -type d -path "*Release-iphoneos/App.app" | head -n 1)
+          find build -type d -name "*.app" || true
+          APP_PATH=$(find build -type d -path "*Release-iphoneos/*.app" | head -n 1)
 
           if [ -z "$APP_PATH" ]; then
-            echo "App.app não encontrado"
-            find build -type d -name "*.app"
+            echo "Nenhum .app de iphoneos foi encontrado."
+            echo "Conteúdo encontrado:"
+            find build -maxdepth 6 -type d | sed -n '1,200p'
             exit 1
           fi
 
-          rm -rf Payload SmileClinicSync.ipa SmileClinicSync.ipa.zip
+          echo "$APP_PATH" > /tmp/app_path.txt
+          echo "APP_PATH=$APP_PATH"
+
+      - name: Create unsigned IPA
+        script: |
+          cd ios/App
+          APP_PATH=$(cat /tmp/app_path.txt)
+
+          rm -rf Payload SmileClinicSync.ipa
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/App.app
 
-          /usr/bin/zip -r SmileClinicSync.ipa Payload
-
+          /usr/bin/zip -qry SmileClinicSync.ipa Payload
           mv SmileClinicSync.ipa ../../SmileClinicSync.ipa
-          ls -lah ../../SmileClinicSync.ipa
 
-      - name: Verify IPA contents
+      - name: Verify IPA
         script: |
           cd ../..
-          file SmileClinicSync.ipa
-          unzip -l SmileClinicSync.ipa | head -50
+          ls -lah SmileClinicSync.ipa
+          unzip -l SmileClinicSync.ipa | sed -n '1,80p'
 
     artifacts:
       - SmileClinicSync.ipa
