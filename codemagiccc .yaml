@@ -1,6 +1,6 @@
 workflows:
-  ios-build-altstore:
-    name: Build iOS for AltStore
+  ios-build-salles-atelie:
+    name: Build Salles Atelie for AltStore
     instance_type: mac_mini_m2
     environment:
       node: latest
@@ -10,29 +10,30 @@ workflows:
       - name: Prepare Environment and Web Build
         script: |
           npm install
-          # Força a instalação dos pacotes necessários para o build nativo
           npm install @capacitor/core @capacitor/cli @capacitor/ios @capacitor/assets
-          # Build da web (Verifique se no seu package.json o comando é 'build')
           npm run build
+
       - name: Force Create iOS Project
         script: |
-          # Detecta a pasta de saída (Lovable geralmente usa 'dist')
           WEB_DIR="dist"
           [ -d "build" ] && WEB_DIR="build"
-          
-          # Remove a pasta ios se ela existir para evitar conflitos
+
           rm -rf ios
-          
-          # Inicializa o Capacitor e cria a pasta nativa
+
           npx cap init "Salles Atelie" "com.salles.atelie" --web-dir $WEB_DIR
           npx cap add ios
           npx cap sync ios
-          
-          # Gera ícones (se houver assets/icon.png)
+
           npx capacitor-assets generate --ios || true
+
+      - name: Confirm App Name
+        script: |
+          echo "Checking iOS app name..."
+          cat ios/App/App/Info.plist | grep -A1 CFBundleDisplayName || true
+          cat ios/App/App/Info.plist | grep -A1 CFBundleName || true
+
       - name: Build Unsigned IPA
         script: |
-          # Verifica se a pasta foi criada, caso contrário interrompe com erro claro
           if [ ! -d "ios/App" ]; then
             echo "ERRO: A pasta ios/App não foi criada!"
             exit 1
@@ -40,8 +41,7 @@ workflows:
 
           cd ios/App
           pod install
-          
-          # Build direto para o binário .app
+
           xcodebuild build \
             -workspace App.xcworkspace \
             -scheme App \
@@ -53,17 +53,16 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Criando o IPA para AltStore
           mkdir -p Payload
-          # O arquivo .app fica dentro da pasta build_output que definimos
           APP_PATH=$(find ./build_output -name "*.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
             echo "ERRO: Arquivo .app não encontrado!"
             exit 1
           fi
-          
+
           cp -R "$APP_PATH" Payload/
           zip -r SallesAtelie.ipa Payload
           mv SallesAtelie.ipa ../../
+
     artifacts:
       - "*.ipa"
