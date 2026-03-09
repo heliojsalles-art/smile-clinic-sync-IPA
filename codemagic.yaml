@@ -1,107 +1,68 @@
 workflows:
-  ios_unsigned_ipa:
-    name: Smile Clinic Sync IPA
+  ios-build-salles-atelie:
+    name: Build Salles Atelie for AltStore
     instance_type: mac_mini_m2
-    max_build_duration: 60
-
     environment:
-      node: 20
+      node: latest
       xcode: latest
       cocoapods: default
-
-    cache:
-      cache_paths:
-        - $HOME/.npm
-        - $HOME/Library/Caches/CocoaPods
-
     scripts:
-      - name: Show versions
-        script: |
-          node -v
-          npm -v
-          xcodebuild -version
-          pod --version
-
-      - name: Install dependencies
+      - name: Prepare Environment and Web Build
         script: |
           npm install
-
-      - name: Ensure capacitor config exists
-        script: |
-          rm -f capacitor.config.ts
-          cat > capacitor.config.json <<'EOF'
-          {
-            "appId": "com.heliosalles.smileclinicsync",
-            "appName": "Smile Clinic Sync",
-            "webDir": "dist",
-            "server": {
-              "iosScheme": "https"
-            }
-          }
-          EOF
-
-      - name: Build web app
-        script: |
+          npm install @capacitor/core @capacitor/cli @capacitor/ios @capacitor/assets
           npm run build
 
-      - name: Recreate iOS platform
+      - name: Force Create iOS Project
         script: |
+          WEB_DIR="dist"
+          [ -d "build" ] && WEB_DIR="build"
+
           rm -rf ios
+
+          npx cap init "Salles Atelie" "com.salles.atelie" --web-dir $WEB_DIR
           npx cap add ios
           npx cap sync ios
 
-      - name: Install CocoaPods
+          npx capacitor-assets generate --ios || true
+
+      - name: Confirm App Name
         script: |
+          echo "Checking iOS app name..."
+          cat ios/App/App/Info.plist | grep -A1 CFBundleDisplayName || true
+          cat ios/App/App/Info.plist | grep -A1 CFBundleName || true
+
+      - name: Build Unsigned IPA
+        script: |
+          if [ ! -d "ios/App" ]; then
+            echo "ERRO: A pasta ios/App não foi criada!"
+            exit 1
+          fi
+
           cd ios/App
           pod install
 
-      - name: Build iOS app for device
-        script: |
-          cd ios/App
-          rm -rf build
-          xcodebuild \
+          xcodebuild build \
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            -derivedDataPath ./build_output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            build
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-      - name: Create IPA
-        script: |
-          APP_PATH=$(find "$CM_BUILD_DIR/ios/App/build" -type d -path "*Release-iphoneos/App.app" | head -n 1)
-
-          echo "APP_PATH=$APP_PATH"
-
+          mkdir -p Payload
+          APP_PATH=$(find ./build_output -name "*.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "ERRO: App.app não encontrado"
-            find "$CM_BUILD_DIR/ios/App/build" -type d -name "*.app" || true
+            echo "ERRO: Arquivo .app não encontrado!"
             exit 1
           fi
 
-          rm -rf /tmp/ipa_build
-          mkdir -p /tmp/ipa_build/Payload
-          cp -R "$APP_PATH" /tmp/ipa_build/Payload/App.app
-
-          cd /tmp/ipa_build
-          /usr/bin/zip -qry /tmp/SmileClinicSync.ipa Payload
-
-          echo "=== Arquivo final ==="
-          ls -lah /tmp/SmileClinicSync.ipa
-          echo "=== Conteúdo do IPA ==="
-          unzip -l /tmp/SmileClinicSync.ipa | head -40
-
-      - name: Verify files
-        script: |
-          echo "=== Arquivos em /tmp ==="
-          ls -lah /tmp | grep -E "SmileClinicSync|ipa" || true
-          echo "=== IPA existe? ==="
-          test -f /tmp/SmileClinicSync.ipa && echo "IPA OK"
+          cp -R "$APP_PATH" Payload/
+          zip -r SallesAtelie.ipa Payload
+          mv SallesAtelie.ipa ../../
 
     artifacts:
-      - /tmp/SmileClinicSync.ipa
-      - /tmp/xcodebuild_logs/*.log
+      - "*.ipa"
